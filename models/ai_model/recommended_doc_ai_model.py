@@ -2,6 +2,8 @@ import joblib
 
 # AI 모델 로드
 def load_model():
+    # TODO: 해당 model을 생성하는 부분이 제일 핵심적인 부분
+    # TODO: Colab에서 학습 진행한 후 완성된 모델 파일을 프로젝트에 복사해 사용할 예정
     model = joblib.load("path_to_your_model_file.pkl")  # 실제 모델 파일 경로 지정. 깃에 올라갈 수 있는 크기인 경우 깃에서 관리 예정
     return model
 
