@@ -7,6 +7,6 @@ class StartupRequestDTO(BaseModel):
     industry_type: str     # 산업 종류
     funding_amount: int    # 필요한 예상 자금 (ex. 난 300만원정도 필요해, 난 1000만원 이상의 지원이 필요해! 등)
 
-# 추천 서류 응답 데이터 구조
+# 추천 사업 응답 데이터 구조
 class StartupResponseDTO(BaseModel):
-    recommended_documents: List[str]  # 추천된 창업 서류 목록 (상위 3개 반환 예정)
+    recommended_documents: List[str]  # 추천된 창업 사업 목록 (상위 3개 반환 예정)
