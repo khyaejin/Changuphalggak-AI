@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,pycharm,git,macos
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,pycharm,git,macos
 
+### IDEA ###
+.idea/
+
 ### Git ###
 # Created by git for backups. To disable backups in Git:
 # $ git config --global mergetool.keepBackup false
