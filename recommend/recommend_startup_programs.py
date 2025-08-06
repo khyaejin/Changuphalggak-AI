@@ -10,7 +10,7 @@ start_time = time.time()
 # 1. 정부 창업 지원 사업 데이터 불러오기
 # =========================
 
-with open("../../data/programs.json", encoding="utf-8") as f:
+with open("../data/programs.json", encoding="utf-8") as f:
     programs = json.load(f)
 
 
