@@ -2,7 +2,9 @@ import json
 
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+import time
+
+start_time = time.time()
 
 # =========================
 # 1. 정부 창업 지원 사업 데이터 불러오기
@@ -76,3 +78,7 @@ for name, final, cond, sim in results[:3]:
     print(f"  - 조건일치 점수: {cond:.3f}")
     print(f"  - 설명 유사도 점수: {sim:.3f}")
     print()
+
+end_time = time.time()
+duration = end_time - start_time
+print(f" 실행 시간: {duration:.3f}초")
