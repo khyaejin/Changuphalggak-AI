@@ -37,7 +37,7 @@ class CreateStartupResponseDTO(BaseModel):
     end_date: Optional[date] = None
 
     # 신청 방법
-    apply_method: Optional[str] = None
+    apply_method: Optional[str] = None #aply_mthd_onli_rcpt_istc
 
     # 지원 내용
     support_details: Optional[str] = None
