@@ -74,7 +74,6 @@ def to_create_startup_response(item: Dict[str, Any]) -> CreateStartupResponseDTO
         support_details=_clean(item.get("pbanc_ctnt")),
 
         # 추가 필드
-        exclude_target=_clean(item.get("aply_excl_trgt_ctnt")),
         external_ref=str(item.get("pbanc_sn")) if item.get("pbanc_sn") is not None else None,
         guidance_url=_clean(item.get("biz_gdnc_url")),
         is_recruiting=True if item.get("rcrt_prgs_yn") == "Y" else False,

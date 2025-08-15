@@ -32,8 +32,6 @@ class CreateStartupResponseDTO(BaseModel):
 
 
 # 추가
-    # 제외 대상
-    exclude_target: Optional[str] = None
     # 외부 참조 ID (pbanc_sn)
     external_ref: Optional[str] = None
     # 안내 페이지 URL
