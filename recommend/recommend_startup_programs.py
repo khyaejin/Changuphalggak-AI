@@ -13,7 +13,6 @@ start_time = time.time()
 with open("../data/programs.json", encoding="utf-8") as f:
     programs = json.load(f)
 
-
 # =========================
 # 2. 사용자 창업 idea 정의
 # - 추후 REST API에서 받아올 예정
