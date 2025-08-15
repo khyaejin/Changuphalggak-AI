@@ -1,3 +1,4 @@
+import base64
 import os
 import re
 import asyncio
@@ -31,6 +32,15 @@ def _build_agency(item: Dict[str, Any]) -> Optional[str]:
         return f"{org} / {dept}"
     return org or dept
 
+def _decode_base64_if_needed(value: str) -> str:
+    try:
+        # Base64인지 확인 후 디코딩
+        decoded = base64.b64decode(value).decode("utf-8")
+        return decoded
+    except Exception:
+        # 디코딩 실패하면 원본 반환
+        return value
+
 def _build_apply_method(item: Dict[str, Any]) -> Optional[str]:
     parts = []
     if item.get("aply_mthd_onli_rcpt_istc"):
@@ -38,7 +48,8 @@ def _build_apply_method(item: Dict[str, Any]) -> Optional[str]:
     if item.get("biz_aply_url"):
         parts.append(f"신청URL: {item['biz_aply_url']}")
     if item.get("aply_mthd_eml_rcpt_istc"):
-        parts.append(f"이메일: {item['aply_mthd_eml_rcpt_istc']}")
+        email_value = _decode_base64_if_needed(item["aply_mthd_eml_rcpt_istc"])
+        parts.append(f"이메일: {email_value}")
     if item.get("aply_mthd_vst_rcpt_istc"):
         parts.append("방문 접수")
     if item.get("aply_mthd_pssr_rcpt_istc"):
