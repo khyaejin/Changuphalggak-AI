@@ -24,20 +24,29 @@ class CreateStartupResponseDTO(BaseModel):
     # 지원 대상
     target: Optional[str] = None
 
+    # 제외 대상
+    exclude_target: Optional[str] = None  # ✅ 추가
+
     # 연락처
     contact: Optional[str] = None
 
-    # 상세링크
+    # 상세링크 (K-Startup 상세 페이지)
     link: Optional[str] = None
 
+    # 안내 페이지 URL
+    guidance_url: Optional[str] = None  # ✅ 추가
+
+    # 신청 페이지 URL
+    apply_url: Optional[str] = None  # ✅ 추가
+
     # 모집 시작일
-    start_date: Optional[date] = None
+    start_date: Optional[str] = None
 
     # 모집 종료일
-    end_date: Optional[date] = None
+    end_date: Optional[str] = None
 
     # 신청 방법
-    apply_method: Optional[str] = None #aply_mthd_onli_rcpt_istc
+    apply_method: Optional[str] = None  # aply_mthd_onli_rcpt_istc
 
     # 지원 내용
     support_details: Optional[str] = None
@@ -47,3 +56,9 @@ class CreateStartupResponseDTO(BaseModel):
 
     # 신청 절차 및 평가 방법
     evaluation_method: Optional[str] = None
+
+    # 외부 참조 ID (pbanc_sn)
+    external_ref: Optional[str] = None  # ✅ 추가
+
+    # 모집 진행 여부
+    is_recruiting: Optional[bool] = None  #
