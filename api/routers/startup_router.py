@@ -1,9 +1,9 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from api.dto.startup_dto import CreateStartupResponseDTO
-from api.services.startup_service import fetch_startup_supports_async
+from services.startup_service import fetch_startup_supports_async
 
 router = APIRouter()
 @router.post("/api/startup-supports", response_model=List[CreateStartupResponseDTO])

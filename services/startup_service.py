@@ -75,7 +75,7 @@ def to_create_startup_response(item: Dict[str, Any]) -> CreateStartupResponseDTO
         region=_clean(item.get("supt_regin")),
         business_duration=_clean(item.get("biz_enyy")),
         agency=_clean(_build_agency(item)),
-        target_age=_clean(item.get("biz_trgt_age")),
+        target_age=_normalize_target_age(_clean(item.get("biz_trgt_age"))),
         target=_clean(item.get("aply_trgt_ctnt")),
         contact=_clean(_pick_contact(item)),
         link=_clean(item.get("detl_pg_url")),
@@ -89,6 +89,58 @@ def to_create_startup_response(item: Dict[str, Any]) -> CreateStartupResponseDTO
         guidance_url=_clean(item.get("biz_gdnc_url")),
         is_recruiting=True if item.get("rcrt_prgs_yn") == "Y" else False,
     )
+
+# 연령 축약
+def _normalize_target_age(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    value = value.strip()
+    # 토큰 분리
+    tokens = [t.strip() for t in value.split(",") if t.strip()]
+    # 모든 연령 범위 패턴 파싱
+    age_ranges = []
+    for t in tokens:
+        # '만 XX세 미만'
+        m = re.match(r"만\s*(\d+)\s*세\s*미만", t)
+        if m:
+            age_ranges.append((0, int(m.group(1)) - 1))
+            continue
+        # '만 XX세 이상 ~ 만 YY세 이하'
+        m = re.match(r"만\s*(\d+)\s*세\s*이상\s*~\s*만\s*(\d+)\s*세\s*이하", t)
+        if m:
+            age_ranges.append((int(m.group(1)), int(m.group(2))))
+            continue
+        # '만 XX세 이상'
+        m = re.match(r"만\s*(\d+)\s*세\s*이상", t)
+        if m:
+            age_ranges.append((int(m.group(1)), 200))  # 200세는 사실상 무제한 상한
+            continue
+    # 범위가 없으면 원본 반환
+    if not age_ranges:
+        return value
+    # 범위 병합
+    age_ranges.sort()
+    merged = [age_ranges[0]]
+    for start, end in age_ranges[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end + 1:
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    # 전체 커버 체크
+    if merged[0][0] <= 0 and merged[-1][1] >= 200:
+        return "제한 없음"
+    # 하나의 구간으로 축약 가능하면 간단히
+    if len(merged) == 1:
+        s, e = merged[0]
+        if s <= 0:
+            return f"만 {e}세 이하"
+        elif e >= 200:
+            return f"만 {s}세 이상"
+        else:
+            return f"만 {s}세 이상 ~ 만 {e}세 이하"
+    # 그 외는 원본 반환
+    return value
 
 # ---------- 내부 메서드 ----------
 async def _safe_fetch_json(client: httpx.AsyncClient, params: Dict[str, Any]) -> Dict[str, Any]:
