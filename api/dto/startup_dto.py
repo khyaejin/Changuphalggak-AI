@@ -1,7 +1,13 @@
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
+# Request
+class StartupSupportSyncRequest(BaseModel):
+    after_external_ref: Optional[str] = Field(default=None, alias="afterExternalRef")
+    model_config = ConfigDict(populate_by_name=True)
+
+# Response
 class CreateStartupResponseDTO(BaseModel):
     # 지원사업명
     title: str

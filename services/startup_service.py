@@ -14,6 +14,7 @@ BASE_URL = os.getenv("BASE_URL")
 
 # ---------- 유틸 ----------
 
+# 문자열 → date 객체
 def _date_yyyymmdd_to_date(d: Optional[str]) -> Optional[date]:
     if not d:
         return None
@@ -185,6 +186,7 @@ def _filter_and_dedupe(items: List[Dict[str, Any]], seen: set[str]) -> List[Dict
 # ---------- 공개 함수 ----------
 async def fetch_startup_supports_async(
         *,
+        after_external_ref: str | None = None,
         num_rows: int = 10,
         batch_concurrency: int = 5,
         max_empty_batches: int = 2,
