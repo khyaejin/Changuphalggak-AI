@@ -80,3 +80,11 @@ def embed_text(text: str) -> np.ndarray:
     """
     return embed_texts([text])[0]
 
+
+def embedding_dimension() -> int:
+    """
+    임베딩 차원 알려주는 메서드
+    현재) all-MiniLM-L6-v2 모델 : 384차원
+    참고) 일반적인 BERT 모델: 768차원
+    """
+    return load_model().get_sentence_embedding_dimension()
