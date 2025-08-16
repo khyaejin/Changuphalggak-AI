@@ -58,6 +58,11 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     임베딩 벡터를 L2 정규화하면 두 벡터의 내적이 코사인 유사도와 같아져서 유사도를 구할 수 있게 됨
     """
     model = load_model() # 이전에 만들어둔 모델 사용
+    """ 
+    1. 텍스트 토큰화
+    2. SBERT 모델 사용해 임베딩 벡터 생성
+    3. L2 정규화
+    """
     vecs = model.encode(
         texts,
         batch_size=batch_size,
@@ -67,4 +72,11 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     )
     return vecs.astype("float32") # FAISS 벡터 검색 라이브러리 사용 위해
 
+
+def embed_text(text: str) -> np.ndarray:
+    """
+    단일 텍스트 -> 임베딩 벡터 변환 메서드
+    - 추후 사용자가 입력한 창업 아이디어를 벡터화 하기 위한 메서드
+    """
+    return embed_texts([text])[0]
 
