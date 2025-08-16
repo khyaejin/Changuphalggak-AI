@@ -2,8 +2,9 @@ import base64
 import os
 import re
 import asyncio
+import logging
 from datetime import datetime, date
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 import httpx
 from dotenv import load_dotenv
 from api.dto.startup_dto import CreateStartupResponseDTO
@@ -12,8 +13,10 @@ load_dotenv()
 SERVICE_KEY = os.getenv("SERVICE_KEY")
 BASE_URL = os.getenv("BASE_URL")
 
-# ---------- 유틸 ----------
+# ---------- 로거 ----------
+logger = logging.getLogger("startup_service")
 
+# ---------- 유틸 메서드들 ----------
 # 문자열 → date 객체
 def _date_yyyymmdd_to_date(d: Optional[str]) -> Optional[date]:
     if not d:
@@ -131,7 +134,7 @@ def _normalize_target_age(value: Optional[str]) -> Optional[str]:
     # 전체 커버 체크
     if merged[0][0] <= 0 and merged[-1][1] >= 200:
         return "제한 없음"
-    # 하나의 구간으로 축약 가능하면 간단히
+    # 하나의 구간으로 축약 가능하면 간단히 하기
     if len(merged) == 1:
         s, e = merged[0]
         if s <= 0:
@@ -146,117 +149,196 @@ def _normalize_target_age(value: Optional[str]) -> Optional[str]:
 # ---------- 내부 메서드 ----------
 async def _safe_fetch_json(client: httpx.AsyncClient, params: Dict[str, Any]) -> Dict[str, Any]:
     try:
+        log_params = {k: v for k, v in params.items() if k != "serviceKey"}
+        logger.debug("[HTTP] GET %s params=%s", BASE_URL, log_params)
         r = await client.get(BASE_URL, params=params, timeout=10.0)
+        logger.debug("[HTTP] RES page=%s status=%s bytes=%s",
+                     params.get("pageNo"), r.status_code, len(r.content))
         r.raise_for_status()
         ctype = r.headers.get("content-type", "")
         if "application/json" not in ctype.lower():
-            # HTML/빈 응답 등 → 빈 데이터로 처리
+            # HTML/빈 응답 등 있는 경우 → 빈 데이터로 처리
+            logger.warning("[HTTP] Non-JSON content-type=%s (page=%s)", ctype, params.get("pageNo"))
             return {}
         return r.json()
     except Exception as e:
         # 네트워크/JSON 파싱/HTTP 오류 → 빈 데이터로 처리
-        print(f"[ERROR] page={params.get('pageNo')} 요청 실패: {e}")
+        logger.error("[ERROR] page=%s 요청 실패: %s", params.get("pageNo"), e)
         return {}
 
 async def _fetch_page_items(client: httpx.AsyncClient, page_no: int, num_rows: int) -> List[Dict[str, Any]]:
     params = {
         "serviceKey": SERVICE_KEY,
-        "pageNo": page_no,
-        "numOfRows": num_rows,
+        "page": page_no, # pageNo -> page
+        "perPage": num_rows, # numOfRows -> perPage
         "returnType": "json",
     }
     data = await _safe_fetch_json(client, params)
-    return data.get("data", []) or []
+    items = data.get("data", []) or []
+    logger.debug("[PAGE] page=%s raw_items=%s", page_no, len(items))
+    return items
 
-def _filter_and_dedupe(items: List[Dict[str, Any]], seen: set[str]) -> List[Dict[str, Any]]:
+def _filter_and_dedupe(items, seen):
     out = []
+    removed_private = 0
+    removed_dup = 0
     for it in items:
         sprv = (it.get("sprv_inst") or "").strip()
-        if "민간" in sprv:
+        if "민간" in sprv: # 추후 필요하면 필터링 더 추가
+            removed_private += 1
             continue
         ext = it.get("pbanc_sn")
         key = f"{ext}" if ext is not None else None
         if key and key in seen:
+            removed_dup += 1
             continue
         if key:
             seen.add(key)
         out.append(it)
+    logger.debug("[FILTER] in=%s -> out=%s (민간:%s, dup:%s)",
+                 len(items), len(out), removed_private, removed_dup)
     return out
 
 # ---------- 공개 함수 ----------
 async def fetch_startup_supports_async(
         *,
         after_external_ref: str | None = None,
-        num_rows: int = 10,
+        num_rows: int = 10,                 # 한 번에 10개로 설정
         batch_concurrency: int = 5,
         max_empty_batches: int = 2,
         sleep_between_batches: float = 0.05,
-        hard_max_pages: int = 500,  # 안전 상한
+        hard_max_pages: int = 50, # 상한선
 ) -> List[CreateStartupResponseDTO]:
+    logger.info("[START] after_external_ref=%s num_rows=%s batch_concurrency=%s",
+                after_external_ref, num_rows, batch_concurrency)
 
     all_items: List[Dict[str, Any]] = []
     seen: set[str] = set()
     empty_batches = 0
+    pages_scanned = 0
 
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=50)
     async with httpx.AsyncClient(headers={"Accept": "application/json"}, limits=limits) as client:
-        # 1) 첫 페이지로 총 페이지 수 추정
-        first = await _safe_fetch_json(client, {
-            "serviceKey": SERVICE_KEY, "pageNo": 1, "numOfRows": num_rows, "returnType": "json"
-        })
-        first_items = (first.get("data") or [])
-        all_items.extend(_filter_and_dedupe(first_items, seen))
 
-        total_pages: Optional[int] = None
-        try:
-            # 보통 totalCount/numOfRows 로 계산 가능 (없으면 예외)
-            total_count = int(first.get("totalCount") or first.get("total_count") or 0)
-            if total_count > 0 and num_rows > 0:
-                total_pages = max(1, (total_count + num_rows - 1) // num_rows)
-        except Exception:
-            total_pages = None
+        # --- (A) after_external_ref가 있는 경우: 마커까지 순차 수집 ---
+        if after_external_ref:
+            page = 1
+            found_marker = False
 
-        # 2) 나머지 페이지 수집 (배치)
-        page = 2
-        while True:
-            if total_pages is not None and page > total_pages:
-                break
-            if page > hard_max_pages:
-                print(f"[INFO] hard_max_pages({hard_max_pages}) 도달로 종료")
-                break
-
-            pages = list(range(page, page + batch_concurrency))
-            # total_pages가 있으면 넘어가지 않도록 컷
-            if total_pages is not None:
-                pages = [p for p in pages if p <= total_pages]
-                if not pages:
+            while True:
+                # 안전 상한/빈 페이지 종료
+                if page > hard_max_pages:
+                    logger.info("[STOP] hard_max_pages(%s) 도달", hard_max_pages)
                     break
 
-            tasks = [asyncio.create_task(_fetch_page_items(client, p, num_rows)) for p in pages]
-            results = await asyncio.gather(*tasks)
-
-            batch_count = 0
-            for items in results:
+                items = await _fetch_page_items(client, page, num_rows)
+                pages_scanned += 1
                 filt = _filter_and_dedupe(items, seen)
-                all_items.extend(filt)
-                batch_count += len(filt)
 
-            if batch_count == 0:
-                empty_batches += 1
-                if empty_batches >= max_empty_batches:
+                # 원 응답(items)이 비었을 때만 '끝'으로 간주
+                if not items:
+                    empty_batches += 1
+                    logger.debug("[LOOP-A] empty batch count=%s", empty_batches)
+                    if empty_batches >= max_empty_batches:
+                        logger.info("[STOP] max_empty_batches(%s) 도달", max_empty_batches)
+                        break
+                else:
+                    empty_batches = 0  # 응답은 있었음(필터로 비었더라도 계속 진행)
+
+                # 최신부터 과거로 조회 가정 (API가 page=1이 최신)
+                for it in filt:
+                    ext = it.get("pbanc_sn")
+                    ext_str = f"{ext}" if ext is not None else None
+                    if ext_str == after_external_ref:
+                        found_marker = True
+                        # 마커 '전(이후/최신)'까지만 수집하고 즉시 종료
+                        logger.info("[CURSOR] marker found externalRef=%s at page=%s", after_external_ref, page)
+                        break
+                    all_items.append(it)
+
+                if found_marker:
                     break
-            else:
-                empty_batches = 0
 
-            page += batch_concurrency
-            if sleep_between_batches:
-                await asyncio.sleep(sleep_between_batches)
+                page += 1
+                if sleep_between_batches:
+                    await asyncio.sleep(sleep_between_batches)
+
+        # --- (B) after_external_ref가 없는 경우: 기존 배치 병렬 수집 ---
+        else:
+            # 1) 첫 페이지로 총 페이지 수 추정
+            first = await _safe_fetch_json(client, {
+                "serviceKey": SERVICE_KEY, "page": 1, "perPage": num_rows, "returnType": "json"
+            })
+            pages_scanned += 1
+            first_items = (first.get("data") or [])
+            all_items.extend(_filter_and_dedupe(first_items, seen))
+
+            total_pages: Optional[int] = None
+            try:
+                total_count = int(first.get("totalCount") or first.get("total_count") or 0)
+                if total_count > 0 and num_rows > 0:
+                    total_pages = max(1, (total_count + num_rows - 1) // num_rows)
+            except Exception:
+                total_pages = None
+            logger.info("[INFO] estimated total_pages=%s (total_count=%s, page_size=%s)",
+                        total_pages, first.get("totalCount") or first.get("total_count"), num_rows)
+
+            # 2) 나머지 페이지 수집 (배치)
+            page = 2
+            while True:
+                if total_pages is not None and page > total_pages:
+                    logger.info("[STOP] reached end of pages (%s)", total_pages)
+                    break
+                if page > hard_max_pages:
+                    logger.info("[STOP] hard_max_pages(%s) 도달", hard_max_pages)
+                    break
+
+                pages = list(range(page, page + batch_concurrency))
+                if total_pages is not None:
+                    pages = [p for p in pages if p <= total_pages]
+                    if not pages:
+                        break
+
+                logger.debug("[LOOP-B] batch pages=%s", pages)
+                tasks = [asyncio.create_task(_fetch_page_items(client, p, num_rows)) for p in pages]
+                results = await asyncio.gather(*tasks)
+                pages_scanned += len(results)
+
+                raw_non_empty = 0
+                batch_added = 0
+                for items in results:
+                    if items:
+                        raw_non_empty += 1
+                    filt = _filter_and_dedupe(items, seen)
+                    all_items.extend(filt)
+                    batch_added += len(filt)
+
+                logger.debug("[LOOP-B] raw_non_empty=%s batch_added=%s total_collected=%s",
+                             raw_non_empty, batch_added, len(all_items))
+
+                if raw_non_empty == 0:
+                    empty_batches += 1
+                    logger.debug("[LOOP-B] empty batch count=%s", empty_batches)
+                    if empty_batches >= max_empty_batches:
+                        logger.info("[STOP] max_empty_batches(%s) 도달", max_empty_batches)
+                        break
+                else:
+                    empty_batches = 0
+
+                page += batch_concurrency
+                if sleep_between_batches:
+                    await asyncio.sleep(sleep_between_batches)
 
     # DTO 변환
     dtos: List[CreateStartupResponseDTO] = []
+    dto_fail = 0
     for it in all_items:
         try:
             dtos.append(to_create_startup_response(it))
         except Exception as e:
-            print(f"[WARN] DTO 변환 실패 (pbanc_sn={it.get('pbanc_sn')}): {e}")
+            dto_fail += 1
+            logger.warning("[WARN] DTO 변환 실패 (pbanc_sn=%s): %s", it.get("pbanc_sn"), e)
+
+    logger.info("[SUMMARY] pages_scanned=%s collected_raw=%s dto_ok=%s dto_fail=%s",
+                pages_scanned, len(all_items), len(dtos), dto_fail)
     return dtos
