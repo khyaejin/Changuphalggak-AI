@@ -25,6 +25,15 @@ def load_model() -> SentenceTransformer:
     global _model
     if _model is None: # 아직 모델이 로드되지 않았다면
         with _model_lock: # lock 사용해 여러 스레드가 모델 초기화하지 못하게 방지(멀티 스레드 환경)
-            if _model is None: # lock 잡는 사이에 다른 스레드가 모델 로드했을 수도 있음 -> 더블체킹락 사용
+            if _model is None: # lock 잡는 사이에 다른 스레드가 모델 로드했을 수도 있음 -> 더블체크락킹 사용
                 _model = SentenceTransformer(MODEL_NAME) # 모델 불러오기
     return _model
+
+
+def _norm_text(x: Optional[str]) -> str:
+    """간단한 전처리 진행: HTML 엔티티 제거, 공백 정리, 소문자화"""
+    if not x:
+        return ""
+    x = html.unescape(x)
+    x = re.sub(r"\s+", " ", x).strip().lower()
+    return x
