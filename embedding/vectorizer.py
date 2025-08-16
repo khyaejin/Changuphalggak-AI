@@ -49,3 +49,22 @@ def build_index_text(item: Dict[str, Any]) -> str:
         item.get("pbanc_ctnt") # 본문
     ]
     return " ".join(_norm_text(p) for p in parts if p) # 값이 있는 필드만 사용
+
+
+
+def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
+    """
+    텍스트 리스트 → 임베딩 벡터(float32, L2 정규화)
+    임베딩 벡터를 L2 정규화하면 두 벡터의 내적이 코사인 유사도와 같아져서 유사도를 구할 수 있게 됨
+    """
+    model = load_model() # 이전에 만들어둔 모델 사용
+    vecs = model.encode(
+        texts,
+        batch_size=batch_size,
+        show_progress_bar=True, # 진행바 출력하도록(배포 환경에서는 False로 변경 예정)
+        convert_to_numpy=True, # 결과를 넘파이로 반환
+        normalize_embeddings=True, # L2 정규화 하도록
+    )
+    return vecs.astype("float32") # FAISS 벡터 검색 라이브러리 사용 위해
+
+
