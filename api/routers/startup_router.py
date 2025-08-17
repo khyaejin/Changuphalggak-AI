@@ -1,9 +1,12 @@
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from api.dto.startup_dto import CreateStartupResponseDTO, StartupSupportSyncRequest
 from api.services.startup_fetch_service import fetch_startup_supports_async
+from api.dto.recommended_dto import StartupRequestDTO, SimilarSupportDTO
+from api.services.recommend_service import similar_top_k
+
 
 router = APIRouter()
 @router.post("/api/startup-supports", response_model=List[CreateStartupResponseDTO])
@@ -11,3 +14,9 @@ async def get_startup_supports(req: StartupSupportSyncRequest) -> List[CreateSta
     return await fetch_startup_supports_async(after_external_ref=req.after_external_ref)
 
 # 창업 사업 추천 상위 3개 반환 API
+@router.post("/api/similar", response_model=List[SimilarSupportDTO])
+def get_similar_supports(payload: StartupRequestDTO, k: int = Query(30, ge=1, le=100)):
+    """
+    아이디어(제목+설명)를 입력받아 코사인 유사도 상위 k(30)개의 지원사업을 반환
+    """
+    return similar_top_k(payload, k=k)

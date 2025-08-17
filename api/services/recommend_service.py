@@ -5,8 +5,7 @@ import os
 import logging
 from typing import List
 
-from api.dto.recommended_dto import StartupRequestDTO
-from api.dto.recommended_dto import SimilarSupportDTO
+from api.dto.recommended_dto import StartupRequestDTO, SimilarSupportDTO
 from api.embedding.vectorizer import embed_texts, embedding_dimension
 from api.embedding.faiss_store import FaissStore
 

@@ -350,4 +350,4 @@ __pycache__/        # Python 캐시 파일
 .idea/              # IDE 설정 파일
 
 # data 업로드 제한
-#data
+data
