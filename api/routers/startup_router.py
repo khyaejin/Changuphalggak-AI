@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter
 
 from api.dto.startup_dto import CreateStartupResponseDTO, StartupSupportSyncRequest
-from services.startup_service import fetch_startup_supports_async
+from api.services.startup_fetch_service import fetch_startup_supports_async
 
 router = APIRouter()
 @router.post("/api/startup-supports", response_model=List[CreateStartupResponseDTO])

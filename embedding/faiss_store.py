@@ -19,6 +19,7 @@ class FaissStore:
         self.index_path = index_path # 인덱스를 저장할 파일 위치
         self.idmap_path = idmap_path # ref↔id 매핑 JSON 파일 위치
         self.dim = dim  # 벡터 차원
+        self._lock = threading.RLock()
         self._index = None # 실제 FAISS 인덱스 초기화
         self._ref2id = {}  # ref(문자열) → id(int64)
         self._id2ref = {} # id(int64) → ref(문자열)
