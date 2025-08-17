@@ -1,3 +1,6 @@
+"""
+벡터화 및 external_ref 기반 색인 생성 로직
+"""
 import os
 import re
 import logging

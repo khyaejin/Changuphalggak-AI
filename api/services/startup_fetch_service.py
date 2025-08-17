@@ -1,3 +1,7 @@
+"""
+k-startup open api 통신 및 데이터 가공 로직
+"""
+
 import base64
 import os
 import re
@@ -10,7 +14,6 @@ from dotenv import load_dotenv
 from api.dto.startup_dto import CreateStartupResponseDTO
 
 from api.services.vectorize_hook import vectorize_and_upsert_from_dtos
-
 
 load_dotenv()
 SERVICE_KEY = os.getenv("SERVICE_KEY")
