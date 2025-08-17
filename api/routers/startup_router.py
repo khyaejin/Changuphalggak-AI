@@ -7,11 +7,18 @@ from api.services.startup_fetch_service import fetch_startup_supports_async
 from api.dto.recommended_dto import StartupRequestDTO, SimilarSupportDTO
 from api.services.recommend_service import similar_top_k
 
-
 router = APIRouter()
+
+# 창업 지원 사업 수집
 @router.post("/api/startup-supports", response_model=List[CreateStartupResponseDTO])
-async def get_startup_supports(req: StartupSupportSyncRequest) -> List[CreateStartupResponseDTO]:
-    return await fetch_startup_supports_async(after_external_ref=req.after_external_ref)
+async def get_startup_supports(
+        req: StartupSupportSyncRequest,
+        hard_max_pages: int = Query(300, ge=1, le=500)  # 기본값 300
+) -> List[CreateStartupResponseDTO]:
+    return await fetch_startup_supports_async(
+        after_external_ref=req.after_external_ref,
+        hard_max_pages=hard_max_pages
+    )
 
 # 창업 지원 사업 유사도 검색 상위 3개 반환 API
 @router.post("/api/similar", response_model=List[SimilarSupportDTO])

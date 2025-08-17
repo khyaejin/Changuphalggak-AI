@@ -216,10 +216,11 @@ async def fetch_startup_supports_async(
         batch_concurrency: int = 5,
         max_empty_batches: int = 2,
         sleep_between_batches: float = 0.05,
-        hard_max_pages: int = 50, # 상한선 -> 추후 배포시 500으로 변경 예정
+        hard_max_pages: int = 500, # 상한선
 ) -> List[CreateStartupResponseDTO]:
-    logger.info("[START] after_external_ref=%s num_rows=%s batch_concurrency=%s",
-                after_external_ref, num_rows, batch_concurrency)
+    # 색 표시를 위해 임시로 warning 사용
+    logger.warning("[START] after_external_ref=%s num_rows=%s batch_concurrency=%s hard_max_pages=%s",
+                after_external_ref, num_rows, batch_concurrency, hard_max_pages)
 
     all_items: List[Dict[str, Any]] = []
     seen: set[str] = set()
