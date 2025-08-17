@@ -1,3 +1,6 @@
+"""
+벡터화 및 external_ref 기반 색인 생성 로직
+"""
 import os
 import re
 import logging
@@ -7,7 +10,7 @@ from api.embedding.vectorizer import embed_texts, embedding_dimension
 from api.embedding.faiss_store import FaissStore
 from api.dto.startup_dto import CreateStartupResponseDTO
 
-logger = logging.getLogger("vectorize_hook")
+logger = logging.getLogger("startup_service")
 
 # 경로 불러오기
 INDEX_PATH = os.getenv("INDEX_PATH", "data/supports.faiss")
