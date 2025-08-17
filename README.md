@@ -61,9 +61,12 @@ python -m pip install --break-system-packages -r requirements.txt
 
 ## 2. 서버 실행
 
+sudo apt install uvicorn
+fastapi
+
 ```bash
 # 가상환경 활성화된 상태에서
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 * `--reload` : 코드 변경 시 자동 재시작
