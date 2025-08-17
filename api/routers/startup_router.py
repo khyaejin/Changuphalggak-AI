@@ -13,7 +13,7 @@ router = APIRouter()
 @router.post("/api/startup-supports", response_model=List[CreateStartupResponseDTO])
 async def get_startup_supports(
         req: StartupSupportSyncRequest,
-        hard_max_pages: int = Query(300, ge=1, le=500)  # 기본값 300
+        hard_max_pages: int = Query(100, ge=1, le=500)  # 기본값 100
 ) -> List[CreateStartupResponseDTO]:
     return await fetch_startup_supports_async(
         after_external_ref=req.after_external_ref,

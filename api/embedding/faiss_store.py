@@ -4,13 +4,17 @@
 - 숫자 ID만 관리 가능
 """
 from __future__ import annotations
-import json
 import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE") # 중복 libomp 허용 (임시 방패)
+os.environ.setdefault("OMP_NUM_THREADS", "1") # OpenMP 전역 스레드 1
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false") # HF tokenizers 스레드 억제
+import json
 import threading
-from typing import Dict, List, Tuple, Optional
-
 import numpy as np
 import faiss
+
+from typing import List, Tuple
+
 
 
 class FaissStore:
@@ -23,8 +27,16 @@ class FaissStore:
         self._index = None # 실제 FAISS 인덱스 초기화
         self._ref2id = {}  # ref(문자열) → id(int64)
         self._id2ref = {} # id(int64) → ref(문자열)
+        self._lock = threading.RLock()  # 초기화
 
-    # ---------- 내부 유틸 ----------
+        # FAISS 내부 OpenMP 스레드 제한
+        try:
+            if hasattr(faiss, "omp_set_num_threads"):
+                faiss.omp_set_num_threads(1)
+        except Exception:
+            pass
+
+# ---------- 내부 유틸 ----------
     @staticmethod
     def _stable_int64(ref: str) -> int: # _ensure_id에서 사용
         """
@@ -134,17 +146,43 @@ class FaissStore:
 
     def search(self, query_vec: np.ndarray, k: int) -> List[Tuple[str, float]]:
         """
-        검색 메서드
-        쿼리 벡터와 가장 비슷한 벡터 k개를 찾음 (k=3으로 진행 예정)
-        return: ref(문자열), 유사도 점수 -> Springboot에 넘겨 내용 확인
+        코사인 유사도(=내적, L2정규화 전제) 기반 상위 k개 (ref, score) 반환
         """
-        if query_vec.ndim != 2 or query_vec.shape[1] != self.dim or query_vec.shape[0] != 1:
+        # 1) 입력 모양/타입 체크
+        if query_vec.ndim == 1:
+            query_vec = query_vec.reshape(1, -1)
+        if query_vec.shape[1] != self.dim or query_vec.shape[0] != 1:
             raise ValueError(f"query_vec shape must be (1, {self.dim})")
+
+        q = np.ascontiguousarray(query_vec.astype("float32", copy=False))
+
+        # 2) L2 정규화 되었는지 재확인
+        # - L2 정규화가 되어있어야 내적을 사용 가능함
+        norm = np.linalg.norm(q, axis=1, keepdims=True)
+        q = q / np.maximum(norm, 1e-12)
 
         with self._lock:
             self._ensure_index()
-            scores, ids = self._index.search(query_vec, int(k))
+            if self._index is None or int(self._index.ntotal) == 0:
+                return []
 
+            # 3) k 범위 보정
+            k = int(max(1, min(int(k), int(self._index.ntotal))))
+
+            # 4) macOS/libomp 이슈 회피: 검색 구간만 1스레드
+            prev_threads = None
+            try:
+                if hasattr(faiss, "omp_get_max_threads"):
+                    prev_threads = faiss.omp_get_max_threads()
+                if hasattr(faiss, "omp_set_num_threads"):
+                    faiss.omp_set_num_threads(1)
+
+                scores, ids = self._index.search(q, k)
+            finally:
+                if (prev_threads is not None) and hasattr(faiss, "omp_set_num_threads"):
+                    faiss.omp_set_num_threads(prev_threads)
+
+        # 5) id → ref 매핑
         res: List[Tuple[str, float]] = []
         for i, s in zip(ids[0].tolist(), scores[0].tolist()):
             if i == -1:

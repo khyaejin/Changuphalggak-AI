@@ -348,9 +348,11 @@ async def fetch_startup_supports_async(
         except Exception as e:
             dto_fail += 1
             logger.warning("[WARN] DTO 변환 실패 (pbanc_sn=%s): %s", it.get("pbanc_sn"), e)
-    # ★ 임베딩/인덱스 업데이트 (제목+본문만, external_ref 기준)
+
+    # 임베딩/인덱스 업데이트 (제목+본문만, external_ref 기준)
     try:
         vectorize_and_upsert_from_dtos(dtos)
+        logger.info("[VEC] 벡터화 시작")
     except Exception as e:
         logger.error("[VEC][ERROR] 벡터화 실패: %s", e)
 
