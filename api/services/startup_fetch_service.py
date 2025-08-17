@@ -107,22 +107,22 @@ def _normalize_target_age(value: Optional[str]) -> Optional[str]:
     # 모든 연령 범위 패턴 파싱
     age_ranges = []
     for t in tokens:
-        # '만 XX세 미만'
+        # 만 XX세 미만
         m = re.match(r"만\s*(\d+)\s*세\s*미만", t)
         if m:
             age_ranges.append((0, int(m.group(1)) - 1))
             continue
-        # '만 XX세 이상 ~ 만 YY세 이하'
+        # 만 XX세 이상 ~ 만 YY세 이하
         m = re.match(r"만\s*(\d+)\s*세\s*이상\s*~\s*만\s*(\d+)\s*세\s*이하", t)
         if m:
             age_ranges.append((int(m.group(1)), int(m.group(2))))
             continue
-        # '만 XX세 이상'
+        # 만 XX세 이상
         m = re.match(r"만\s*(\d+)\s*세\s*이상", t)
         if m:
-            age_ranges.append((int(m.group(1)), 200))  # 200세는 사실상 무제한 상한
+            age_ranges.append((int(m.group(1)), 200))
             continue
-    # 범위가 없으면 원본 반환
+    # 범위가 없으면 원본 사용
     if not age_ranges:
         return value
     # 범위 병합
@@ -153,10 +153,13 @@ def _normalize_target_age(value: Optional[str]) -> Optional[str]:
 async def _safe_fetch_json(client: httpx.AsyncClient, params: Dict[str, Any]) -> Dict[str, Any]:
     try:
         log_params = {k: v for k, v in params.items() if k != "serviceKey"}
-        logger.debug("[HTTP] GET %s params=%s", BASE_URL, log_params)
+        # 요청 관련 정보 찍기
+        logger.debug("[HTTP] GET 요청 보냄 → URL=%s, 요청 params=%s", BASE_URL, log_params)
         r = await client.get(BASE_URL, params=params, timeout=10.0)
-        logger.debug("[HTTP] RES page=%s status=%s bytes=%s",
+        # 응답 관련 정보 찍기
+        logger.debug("[HTTP] 응답 받음 → page=%s, status=%s, bytes=%s",
                      params.get("pageNo"), r.status_code, len(r.content))
+
         r.raise_for_status()
         ctype = r.headers.get("content-type", "")
         if "application/json" not in ctype.lower():
@@ -166,7 +169,7 @@ async def _safe_fetch_json(client: httpx.AsyncClient, params: Dict[str, Any]) ->
         return r.json()
     except Exception as e:
         # 네트워크/JSON 파싱/HTTP 오류 → 빈 데이터로 처리
-        logger.error("[ERROR] page=%s 요청 실패: %s", params.get("pageNo"), e)
+        logger.error("[ERROR] page=%s 요청 실패(네트워크, JSON 파싱, HTTP 오류: %s", params.get("pageNo"), e)
         return {}
 
 async def _fetch_page_items(client: httpx.AsyncClient, page_no: int, num_rows: int) -> List[Dict[str, Any]]:
@@ -206,11 +209,11 @@ def _filter_and_dedupe(items, seen):
 async def fetch_startup_supports_async(
         *,
         after_external_ref: str | None = None,
-        num_rows: int = 10,                 # 한 번에 10개로 설정
+        num_rows: int = 10, # 한 번에 10개로
         batch_concurrency: int = 5,
         max_empty_batches: int = 2,
         sleep_between_batches: float = 0.05,
-        hard_max_pages: int = 50, # 상한선
+        hard_max_pages: int = 50, # 상한선 -> 추후 배포시 500으로 변경 예정
 ) -> List[CreateStartupResponseDTO]:
     logger.info("[START] after_external_ref=%s num_rows=%s batch_concurrency=%s",
                 after_external_ref, num_rows, batch_concurrency)
@@ -223,7 +226,7 @@ async def fetch_startup_supports_async(
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=50)
     async with httpx.AsyncClient(headers={"Accept": "application/json"}, limits=limits) as client:
 
-        # --- (A) after_external_ref가 있는 경우: 마커까지 순차 수집 ---
+        # 1) after_external_ref가 있는 경우: 마커까지 순차로 수집 ---
         if after_external_ref:
             page = 1
             found_marker = False
@@ -238,7 +241,7 @@ async def fetch_startup_supports_async(
                 pages_scanned += 1
                 filt = _filter_and_dedupe(items, seen)
 
-                # 원 응답(items)이 비었을 때만 '끝'으로 간주
+                # 응답(items)이 빈 경우 -> 끝 간주
                 if not items:
                     empty_batches += 1
                     logger.debug("[LOOP-A] empty batch count=%s", empty_batches)
@@ -248,13 +251,13 @@ async def fetch_startup_supports_async(
                 else:
                     empty_batches = 0  # 응답은 있었음(필터로 비었더라도 계속 진행)
 
-                # 최신부터 과거로 조회 가정 (API가 page=1이 최신)
+                # 최신부터 과거로 조회로 조회함
                 for it in filt:
                     ext = it.get("pbanc_sn")
                     ext_str = f"{ext}" if ext is not None else None
                     if ext_str == after_external_ref:
                         found_marker = True
-                        # 마커 '전(이후/최신)'까지만 수집하고 즉시 종료
+                        # 마커 전까지만 수집(중복 방지)
                         logger.info("[CURSOR] marker found externalRef=%s at page=%s", after_external_ref, page)
                         break
                     all_items.append(it)
@@ -266,7 +269,7 @@ async def fetch_startup_supports_async(
                 if sleep_between_batches:
                     await asyncio.sleep(sleep_between_batches)
 
-        # --- (B) after_external_ref가 없는 경우: 기존 배치 병렬 수집 ---
+        # 2) after_external_ref가 없는 경우: 기존 배치 병렬 수집 ---
         else:
             # 1) 첫 페이지로 총 페이지 수 추정
             first = await _safe_fetch_json(client, {

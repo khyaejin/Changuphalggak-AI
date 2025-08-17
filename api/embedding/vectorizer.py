@@ -66,7 +66,7 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     vecs = model.encode(
         texts,
         batch_size=batch_size,
-        show_progress_bar=True, # 진행바 출력하도록(배포 환경에서는 False로 변경 예정)
+        show_progress_bar=False, # 진행바 출력 x
         convert_to_numpy=True, # 결과를 넘파이로 반환
         normalize_embeddings=True, # L2 정규화 하도록
     )
