@@ -9,6 +9,9 @@ import httpx
 from dotenv import load_dotenv
 from api.dto.startup_dto import CreateStartupResponseDTO
 
+from api.services.vectorize_hook import vectorize_and_upsert_from_dtos
+
+
 load_dotenv()
 SERVICE_KEY = os.getenv("SERVICE_KEY")
 BASE_URL = os.getenv("BASE_URL")
@@ -338,7 +341,12 @@ async def fetch_startup_supports_async(
         except Exception as e:
             dto_fail += 1
             logger.warning("[WARN] DTO 변환 실패 (pbanc_sn=%s): %s", it.get("pbanc_sn"), e)
+    # ★ 임베딩/인덱스 업데이트 (제목+본문만, external_ref 기준)
+    try:
+        vectorize_and_upsert_from_dtos(dtos)
+    except Exception as e:
+        logger.error("[VEC][ERROR] 벡터화 실패: %s", e)
 
-    logger.info("[SUMMARY] pages_scanned=%s collected_raw=%s dto_ok=%s dto_fail=%s",
+    logger.info("[SUMMARY] 처리한 페이지=%s 수집한 원본 데이터=%s DTO 변환 성공=%s DTO 변환 실패=%s",
                 pages_scanned, len(all_items), len(dtos), dto_fail)
     return dtos

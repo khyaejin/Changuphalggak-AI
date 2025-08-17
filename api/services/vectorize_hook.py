@@ -9,6 +9,7 @@ from api.dto.startup_dto import CreateStartupResponseDTO
 
 logger = logging.getLogger("vectorize_hook")
 
+# 경로 불러오기
 INDEX_PATH = os.getenv("INDEX_PATH", "data/supports.faiss")
 IDMAP_PATH = os.getenv("IDMAP_PATH", "data/refs.json")
 
