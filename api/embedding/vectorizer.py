@@ -39,17 +39,17 @@ def _norm_text(x: Optional[str]) -> str:
     return x
 
 
-def build_index_text(item: Dict[str, Any]) -> str:
-    """
-    색인용 텍스트 생성
-    API 응답 Json -> 필요한 필드만 뽑아 하나의 문자열로 생성
-    """
-    parts = [
-        item.get("biz_pbanc_nm"), # 제목
-        item.get("pbanc_ctnt") # 본문
-    ]
-    return " ".join(_norm_text(p) for p in parts if p) # 값이 있는 필드만 사용
-
+# def build_index_text(item: Dict[str, Any]) -> str:
+#     """
+#     색인용 텍스트 생성
+#     API 응답 Json -> 필요한 필드만 뽑아 하나의 문자열로 생성
+#     """
+#     parts = [
+#         item.get("biz_pbanc_nm"), # 제목
+#         item.get("pbanc_ctnt") # 본문
+#     ]
+#     return " ".join(_norm_text(p) for p in parts if p) # 값이 있는 필드만 사용
+#
 
 
 def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:

@@ -42,7 +42,7 @@ def vectorize_and_upsert_from_dtos(dtos: List[CreateStartupResponseDTO]) -> None
     refs  = [str(d.external_ref) for d in valid]
 
     dim = embedding_dimension()
-    vecs = embed_texts(texts, batch_size=64, show_bar=True)  # 배포시 OFF 할 예정
+    vecs = embed_texts(texts, batch_size=64)
 
     _ensure_dir(INDEX_PATH)
     _ensure_dir(IDMAP_PATH)
