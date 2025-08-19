@@ -1,0 +1,66 @@
+name: CD - FastAPI over SSH
+
+on:
+  push:
+  # main에 push될 때
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-fastapi
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for metadata only)
+        uses: actions/checkout@v4
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            # 0) 작업 디렉터리로 이동
+            cd "${{ secrets.APP_DIR }}"
+
+            # 1) 최신 코드 가져오기
+            git pull
+
+            # 2) .env 쓰기 (ENV_FILE에 저장된 내용을 그대로 기록)
+            # - 줄바꿈/특수문자 보존을 위해 printf 사용
+            printf '%s' "${{ secrets.ENV_FILE }}" > .env
+
+            # 3) 가상환경 활성화 (없으면 스킵)
+            if [ -f ".venv/bin/activate" ]; then
+              . .venv/bin/activate
+            else
+              echo "[warn] .venv not found. Skipping venv activation."
+            fi
+
+            # 의존성 동기화
+            pip install -r requirements.txt -q || true
+
+            # 4) 이미 돌고있는 서버 중단 (8000 포트)
+            if command -v lsof >/dev/null 2>&1; then
+              if lsof -t -i:8000 >/dev/null 2>&1; then
+                kill -9 $(lsof -t -i:8000) || true
+                echo "[info] Killed process on :8000"
+              fi
+            else
+              # lsof이 없다면 종료
+              pkill -f "uvicorn.*8000" || true
+            fi
+
+            # 5) 서버 재가동
+            #   - 로그는 uvicorn.out으로 리다이렉트
+            nohup python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 > uvicorn.out 2>&1 &
+
+            echo "[done] FastAPI deployed & restarted on :8000"
