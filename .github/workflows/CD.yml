@@ -29,48 +29,61 @@ jobs:
           script_stop: true
           script: |
             set -e
+            APP_DIR="${{ secrets.APP_DIR }}"
+            LOG_DIR="$APP_DIR/logs"
+            LOG_FILE="$LOG_DIR/uvicorn.log"
+            TS="$(date +%Y%m%d-%H%M%S)"
 
             # 0) 작업 디렉터리로 이동
-            cd "${{ secrets.APP_DIR }}"
+            cd "$APP_DIR"
 
             # 1) 최신 코드 가져오기
             git pull
 
-            # 2) .env 쓰기 (ENV_FILE에 저장된 내용을 그대로 기록)
-            # - 줄바꿈/특수문자 보존을 위해 printf 사용
+            # 2) .env 가져오기
             printf '%s' "${{ secrets.ENV_FILE }}" > .env
 
-            # 3) 가상환경 활성화
+            # 3) venv 활성화 (있을 때만)
             if [ -f ".venv/bin/activate" ]; then
               . .venv/bin/activate
             else
               echo "[warn] .venv not found. Skipping venv activation."
             fi
 
-            # 의존성 동기화
+            # requirements 돌리기(의존성 가져오기)
             pip install -r requirements.txt -q || true
 
-            # 4) 이미 돌고있는 서버 중단 (8000 포트)
+            # 4) 로그 파일 준비 및 용량 체크 (>20MB)
+            mkdir -p "$LOG_DIR"
+            touch "$LOG_FILE"
+            if [ -f "$LOG_FILE" ] && [ "$(du -m "$LOG_FILE" | cut -f1)" -ge 20 ]; then
+              mv "$LOG_FILE" "$LOG_DIR/uvicorn-$TS.log"
+              gzip -f "$LOG_DIR/uvicorn-$TS.log" || true # 압축
+              : > "$LOG_FILE"
+              echo "[info] Log rotated: $LOG_DIR/uvicorn-$TS.log.gz"
+            fi
+
+            # 5) 기존 8000포트로 돌고있는 서버가 있다면 서버 중단
             if command -v lsof >/dev/null 2>&1; then
               if lsof -t -i:8000 >/dev/null 2>&1; then
                 kill -9 $(lsof -t -i:8000) || true
                 echo "[info] Killed process on :8000"
               fi
             else
-              # lsof이 없다면 종료
               pkill -f "uvicorn.*8000" || true
             fi
 
-            # 5) 서버 재가동
-            # 로그는 uvicorn.out으로 누적해서 기록
-            nohup python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000 >> uvicorn.out 2>&1 &
+            # 6) 서버 재가동 
+            #    운영에선 --reload 비권장이지만 지금은 유지
+            nohup python -m uvicorn main:app \
+              --reload --host 0.0.0.0 --port 8000 >> "$LOG_FILE" 2>&1 & # 로그는 누적으로 기록
 
-            # 6) 헬스체크 (최대 20초, 10회 재시도함)
-            #    /health 없으면 / 로 대체 시도
+            # 7) 헬스체크 (최대 20초)
             echo "[info] Health check start..."
             ok=false
             for i in $(seq 1 10); do
-              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1 || curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
+              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1 || \
+                 curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
                 ok=true
                 echo "[info] Health check passed on attempt #$i"
                 break
@@ -80,28 +93,9 @@ jobs:
             done
             if [ "$ok" != true ]; then
               echo "[error] Health check failed. Recent uvicorn logs:"
-              tail -n 200 uvicorn.out || true
+              tail -n 200 "$LOG_FILE" || true
               exit 1
             fi
 
             echo "[done] FastAPI deployed & restarted on :8000"
-
-      # 서버 로그 수집 (실패, 성공 모두)
-      - name: Fetch server logs
-        if: failure() || always()
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: 22
-          source: "${{ secrets.APP_DIR }}/uvicorn.out"
-          target: "./logs/"
-
-      # 아티팩트로 업로드
-      - name: Upload logs as artifact
-        if: failure() || always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: uvicorn-logs
-          path: ./logs/uvicorn.out
+            echo "[info] Logs: $LOG_FILE"
