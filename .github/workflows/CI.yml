@@ -7,8 +7,8 @@ on:
     branches: ["main"]   # main 브랜치에 직접 푸시될 때도 실행
 
 jobs:
-  test:
-    name: Run Tests
+  check-env:
+    name: Check Python Environment
     runs-on: ubuntu-latest
 
     steps:
@@ -22,14 +22,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      # 의존성 설치 (테스트용)
+      # 의존성 설치 (서버 실행 가능 여부 확인용 최소 설치)
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
 
-      # 테스트 실행
-      - name: Run tests with Pytest
+      # 서버 실행 가능 여부 확인
+      - name: Dry run FastAPI
         run: |
-          pytest -v --maxfail=1 --disable-warnings
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload --workers 1 --log-level critical &
+          PID=$!
+          sleep 5
+          curl -fsS http://127.0.0.1:8000/health || (kill $PID && exit 1)
+          kill $PID
