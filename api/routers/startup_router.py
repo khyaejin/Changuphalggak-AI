@@ -40,29 +40,34 @@ router = APIRouter()
 @router.post("/ai/startup-supports", response_model=List[CreateStartupResponseDTO])
 async def get_startup_supports(
         req: StartupSupportSyncRequest,
-        hard_max_pages: int = Query(100, ge=1, le=500)  # 기본값 100
+        hard_max_pages: int = Query(100, ge=1, le=300)  # 기본값 100
 ) -> List[CreateStartupResponseDTO]:
     #  요청 파라미터 찍기
-    logger.info("[startup-supports] after_external_ref=%s, hard_max_pages=%s",
-                getattr(req, "after_external_ref", None), hard_max_pages)
+    logger.info(
+        "[지원사업수집] afterExternalRef=%s expiredExternalRefs.len=%s hard_max_pages=%s",
+        req.after_external_ref,
+         len(req.expired_external_refs),
+        hard_max_pages,
+    )
 
     t0 = time.perf_counter()
     result = await fetch_startup_supports_async(
         after_external_ref=req.after_external_ref,
+        expired_external_refs=req.expired_external_refs,
         hard_max_pages=hard_max_pages
     )
     dt = (time.perf_counter() - t0) * 1000
 
     # 반환 직전 프리뷰 보기
-    logger.info("[startup-supports] fetched=%d, elapsed=%.1fms", len(result), dt)
+    logger.info("[지원사업수집] fetched=%d, elapsed=%.1fms", len(result), dt)
     try:
-        logger.debug("[startup-supports] preview(3)=%s", _preview_list(result, n=3))
+        logger.debug("[지원사업수집] preview(3)=%s", _preview_list(result, n=3))
     except Exception as e:
-        logger.warning("[startup-supports] preview log failed: %s", e)
+        logger.warning("[지원사업수집] preview log failed: %s", e)
 
     return result
 
-# 창업 지원 사업 유사도 검색 상위 3개 반환 API
+# 창업 지원 사업 유사도 검색 상위 k개 반환 API
 @router.post("/ai/similar", response_model=List[SimilarSupportDTO])
 def get_similar_supports(payload: StartupRequestDTO, k: int = Query(30, ge=1, le=100)):
     """
@@ -70,22 +75,24 @@ def get_similar_supports(payload: StartupRequestDTO, k: int = Query(30, ge=1, le
     """
     # 요청 페이로드 찍기
     try:
-        title = getattr(payload, "idea_title", None)
-        logger.info("[similar] k=%d, title='%s'", k, title)
-        # 전체 페이로드 보고싶을 때:
-        logger.debug("[similar] payload=%s", json.dumps(_safe_dump(payload), ensure_ascii=False))
+        logger.info("[유사도] k=%d, title='%s'", k, getattr(payload, "idea_title", None))
     except Exception as e:
-        logger.warning("[similar] payload log failed: %s", e)
+        logger.warning("[유사도] payload log failed: %s", e)
 
     t0 = time.perf_counter()
     result = similar_top_k(payload, k=k)
     dt = (time.perf_counter() - t0) * 1000
 
-    # 반환 직전 보기
-    logger.info("[similar] result_count=%d, elapsed=%.1fms", len(result), dt)
-    try:
-        logger.debug("[similar] preview(3)=%s", _preview_list(result, n=3))
-    except Exception as e:
-        logger.warning("[similar] preview log failed: %s", e)
+    # 점수 0~1로 보정
+    for r in result:
+        s = float(r.score)
+        if s < 0.0 or s > 1.0:
+            s = (s + 1.0) / 2.0
+        # 수치 오차 보정 (완전히 -1 ~ 1이 아니기 때문)
+        if s < 0.0: s = 0.0
+        if s > 1.0: s = 1.0
+        r.score = s
 
+    # 반환 직전 보기
+    logger.info("[유사도] result_count=%d, elapsed=%.1fms", len(result), dt)
     return result

@@ -1,6 +1,4 @@
-"""
-벡터화 및 external_ref 기반 색인 생성 로직
-"""
+# 벡터화 및 external_ref 기반 색인 생성 로직
 import os
 import re
 import logging
@@ -12,9 +10,7 @@ from api.dto.startup_dto import CreateStartupResponseDTO
 
 logger = logging.getLogger("startup_service")
 
-# 경로 불러오기
 INDEX_PATH = os.getenv("INDEX_PATH", "data/supports.faiss")
-IDMAP_PATH = os.getenv("IDMAP_PATH", "data/refs.json")
 
 def _ensure_dir(path: str) -> None:
     d = os.path.dirname(path)
@@ -27,32 +23,43 @@ def _norm(s: str | None) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 def _build_text_from_dto(dto: CreateStartupResponseDTO) -> str:
-    # 제목 + 본문만 사용
+    # 제목+본문만 사용
     return f"{_norm(dto.title)} {_norm(dto.support_details)}".strip()
 
 def vectorize_and_upsert_from_dtos(dtos: List[CreateStartupResponseDTO]) -> None:
-    """
-    1) DTO 리스트 -> [제목+본문] 임베딩
-    2) external_ref 인덱스로 사용
-    """
-    # 전처리 먼저) external_ref(식별자), 제목/본문이 있는 항목만 사용하도록
+    # external_ref 있고 제목/본문 있는 것만
     valid = [d for d in dtos if d.external_ref and (d.title or d.support_details)]
     if not valid:
-        logger.info("[VEC] 유효한 데이터(external_ref, 제목, 본문이 있는 데이터)가 없음")
+        logger.info("[벡터화] 유효한 데이터 없음")
         return
 
     texts = [_build_text_from_dto(d) for d in valid]
-    refs  = [str(d.external_ref) for d in valid]
+    refs = [str(d.external_ref) for d in valid]
+
+    # 숫자 문자열만 남김
+    keep_idx = [i for i, r in enumerate(refs) if r.isdigit()]
+    if not keep_idx:
+        logger.info("[벡터화] 숫자 external_ref 없음")
+        return
+    texts = [texts[i] for i in keep_idx]
+    refs = [refs[i] for i in keep_idx]
+
+    # 같은 ref가 여러 번 오면 마지막 것만
+    last = {}
+    for i, r in enumerate(refs):
+        last[r] = i
+    uniq_idx = sorted(last.values())
+    texts = [texts[i] for i in uniq_idx]
+    refs = [refs[i] for i in uniq_idx]
 
     dim = embedding_dimension()
-    vecs = embed_texts(texts, batch_size=64)
+    vecs = embed_texts(texts, batch_size=64).astype("float32")  # add 전에 정규화는 FaissStore가 처리
 
     _ensure_dir(INDEX_PATH)
-    _ensure_dir(IDMAP_PATH)
 
-    store = FaissStore(index_path=INDEX_PATH, idmap_path=IDMAP_PATH, dim=dim)
+    store = FaissStore(index_path=INDEX_PATH, dim=dim)
     store.load()
-    store.add_with_refs(vecs, refs)
+    store.upsert_with_external_ids(vecs, refs)  # 중복은 삭제 후 재추가
     store.save()
 
-    logger.info("[VEC] 새로 추가된 벡터 개수=%s, 현재 인덱스 총 개수=%s", len(refs), store.ntotal)
+    logger.info("[벡터화] upsert=%d, ntotal=%d", len(refs), store.ntotal)
