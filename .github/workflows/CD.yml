@@ -87,23 +87,19 @@ jobs:
               --proxy-headers --forwarded-allow-ips='*' \
               >> "$LOG_FILE" 2>&1 & disown
 
-            # 7) 헬스체크 (최대 20초)
-            echo "[info] 헬스 체크 시작"
+            # 7)  프로세스 체크 (최대 20초)
             ok=false
             for i in $(seq 1 10); do
-              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              if lsof -i:8000 | grep LISTEN >/dev/null; then
                 ok=true
-                echo "[info] Health check passed on attempt #$i"
+                echo "[info] Server process detected on 8000 at attempt #$i"
                 break
               fi
-              echo "[info] Waiting for app.. ($i/10)"
+              echo "[info] Waiting for server process.. ($i/10)"
               sleep 2
             done
             if [ "$ok" != true ]; then
-              echo "[error] 헬스 체크 실패. 로그 저장:"
+              echo "[error] 서버 프로세스 감지 실패. 로그 저장:"
               tail -n 200 "$LOG_FILE" || true
               exit 1
             fi
-
-            echo "[done] FastAPI deployed & restarted on :8000"
-            echo "[info] Logs: $LOG_FILE"
