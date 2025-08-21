@@ -187,7 +187,7 @@ async def _fetch_page_items(client: httpx.AsyncClient, page_no: int, num_rows: i
     }
     data = await _safe_fetch_json(client, params)
     items = data.get("data", []) or []
-    logger.debug("[PAGE] page=%s raw_items=%s", page_no, len(items))
+    logger.debug("[시작] page=%s raw_items=%s", page_no, len(items))
     return items
 
 def _filter_and_dedupe(items, seen):
@@ -196,7 +196,7 @@ def _filter_and_dedupe(items, seen):
     removed_dup = 0
     for it in items:
         sprv = (it.get("sprv_inst") or "").strip()
-        if "민간" in sprv: # 추후 필요하면 필터링 더 추가
+        if "민간" in sprv: 
             removed_private += 1
             continue
         ext = it.get("pbanc_sn")
@@ -207,7 +207,7 @@ def _filter_and_dedupe(items, seen):
         if key:
             seen.add(key)
         out.append(it)
-    logger.debug("[FILTER] in=%s -> out=%s (민간:%s, dup:%s)",
+    logger.debug("[데이터수집] in=%s -> out=%s (민간:%s, dup:%s)",
                  len(items), len(out), removed_private, removed_dup)
     return out
 
@@ -224,7 +224,7 @@ async def fetch_startup_supports_async(
 ) -> List[CreateStartupResponseDTO]:
     # 색 표시를 위해 임시로 warning 사용
     logger.warning(
-        "[START] after_external_ref=%s expired_external_refs=%s num_rows=%s batch_concurrency=%s hard_max_pages=%s",
+        "[시작] after_external_ref=%s expired_external_refs=%s num_rows=%s batch_concurrency=%s hard_max_pages=%s",
         after_external_ref, expired_external_refs, num_rows, batch_concurrency, hard_max_pages
     )
 
@@ -233,12 +233,18 @@ async def fetch_startup_supports_async(
         try:
             dim = embedding_dimension()
             store = FaissStore(index_path=INDEX_PATH, idmap_path=IDMAP_PATH, dim=dim)
-            store.load() # 불러와서
-            store.delete_refs(expired_external_refs) # 해당 임베딩 벡터 삭제
-            store.save() # 저장
-            logger.info("[VEC] 만료된 지원 사업의 임베딩 벡터 삭제 완료: %s개", len(expired_external_refs))
+            store.load()
+            store.delete_refs(expired_external_refs)  # 존재하지 않는 ref는 내부에서 무시된다고 가정
+            store.save()
+            logger.info("[마감데이터삭제] 만료 임베딩 삭제 완료: %d", len(expired_external_refs))
+        except FileNotFoundError:
+            # 인덱스가 아직 없으면 그냥 스킵
+            logger.info("[마감데이터삭제] 인덱스 없음 → 삭제 스킵")
+        except KeyError:
+            # 일부 ref 미존재 시 무시
+            logger.info("[마감데이터삭제] 일부 미존재 ref 무시하고 진행")
         except Exception as e:
-            logger.error("[VEC][ERROR] 만료된 지원 사업의 임베딩 벡터 삭제 실패: %s", e)
+            logger.warning("[마감데이터삭제] 삭제 중 오류: %s", e)
     
     # 2. 신규 데이터 수집 시작 ------------------------------------------------------------------------------
     all_items: List[Dict[str, Any]] = []
@@ -257,7 +263,7 @@ async def fetch_startup_supports_async(
             while True:
                 # 안전 상한/빈 페이지 종료
                 if page > hard_max_pages:
-                    logger.info("[STOP] hard_max_pages(%s) 도달", hard_max_pages)
+                    logger.info("[데이터수집] hard_max_pages(%s) 도달 -> stop", hard_max_pages)
                     break
 
                 items = await _fetch_page_items(client, page, num_rows)
@@ -269,7 +275,7 @@ async def fetch_startup_supports_async(
                     empty_batches += 1
                     logger.debug("[LOOP-A] empty batch count=%s", empty_batches)
                     if empty_batches >= max_empty_batches:
-                        logger.info("[STOP] max_empty_batches(%s) 도달", max_empty_batches)
+                        logger.info("[데이터수집] max_empty_batches(%s) 도달 -> stop", max_empty_batches)
                         break
                 else:
                     empty_batches = 0  # 응답은 있었음(필터로 비었더라도 계속 진행)
@@ -281,7 +287,7 @@ async def fetch_startup_supports_async(
                     if ext_str == after_external_ref:
                         found_marker = True
                         # 마커 전까지만 수집(중복 방지)
-                        logger.info("[CURSOR] marker found externalRef=%s at page=%s", after_external_ref, page)
+                        logger.info("[데이터수집] marker found externalRef=%s at page=%s", after_external_ref, page)
                         break
                     all_items.append(it)
 
@@ -309,17 +315,17 @@ async def fetch_startup_supports_async(
                     total_pages = max(1, (total_count + num_rows - 1) // num_rows)
             except Exception:
                 total_pages = None
-            logger.info("[INFO] estimated total_pages=%s (total_count=%s, page_size=%s)",
+            logger.info("[데이터수집] estimated total_pages=%s (total_count=%s, page_size=%s)",
                         total_pages, first.get("totalCount") or first.get("total_count"), num_rows)
 
             # 2) 나머지 페이지 수집 (배치)
             page = 2
             while True:
                 if total_pages is not None and page > total_pages:
-                    logger.info("[STOP] reached end of pages (%s)", total_pages)
+                    logger.info("[데이터수집] reached end of pages (%s) -> stop", total_pages)
                     break
                 if page > hard_max_pages:
-                    logger.info("[STOP] hard_max_pages(%s) 도달", hard_max_pages)
+                    logger.info("[데이터수집] hard_max_pages(%s) 도달 -> stop", hard_max_pages)
                     break
 
                 pages = list(range(page, page + batch_concurrency))
@@ -349,7 +355,7 @@ async def fetch_startup_supports_async(
                     empty_batches += 1
                     logger.debug("[LOOP-B] empty batch count=%s", empty_batches)
                     if empty_batches >= max_empty_batches:
-                        logger.info("[STOP] max_empty_batches(%s) 도달", max_empty_batches)
+                        logger.info("[데이터수집] max_empty_batches(%s) 도달 -> stop", max_empty_batches)
                         break
                 else:
                     empty_batches = 0
@@ -367,16 +373,16 @@ async def fetch_startup_supports_async(
             dtos.append(to_create_startup_response(it))
         except Exception as e:
             dto_fail += 1
-            logger.warning("[WARN] DTO 변환 실패 (pbanc_sn=%s): %s", it.get("pbanc_sn"), e)
+            logger.warning("[DTO변환] DTO 변환 실패 (pbanc_sn=%s): %s", it.get("pbanc_sn"), e)
 
 
     # 4. 임베딩/인덱스 업데이트 (제목+본문만, external_ref을 key로 관리) ---------------------------------
     try:
         vectorize_and_upsert_from_dtos(dtos)
-        logger.info("[VEC] 벡터화 시작")
+        logger.info("[벡터화] 벡터화 시작")
     except Exception as e:
-        logger.error("[VEC][ERROR] 벡터화 실패: %s", e)
+        logger.error("[벡터화][ERROR] 벡터화 실패: %s", e)
 
-    logger.info("[SUMMARY] 처리한 페이지=%s 수집한 원본 데이터=%s DTO 변환 성공=%s DTO 변환 실패=%s",
+    logger.info("[최종] 처리한 페이지=%s 수집한 원본 데이터=%s DTO 변환 성공=%s DTO 변환 실패=%s",
                 pages_scanned, len(all_items), len(dtos), dto_fail)
     return dtos
