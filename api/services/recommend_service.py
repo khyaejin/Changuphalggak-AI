@@ -1,6 +1,5 @@
-"""
-창업 지원사업 추천 로직
-"""
+# 창업 지원사업 추천 로직
+
 import os
 import logging
 from typing import List

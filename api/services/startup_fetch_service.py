@@ -1,6 +1,4 @@
-"""
-k-startup open api 통신 및 데이터 가공 로직
-"""
+# k-startup open api 통신 및 데이터 가공 로직
 
 import base64
 import os
@@ -228,29 +226,30 @@ async def fetch_startup_supports_async(
         after_external_ref, expired_external_refs, num_rows, batch_concurrency, hard_max_pages
     )
 
-    # 1. 먼저 마감된 데이터 삭제 ----------------------------------------------------------------------------
+    # 1. 먼저 마감된 데이터 삭제 --------------------------------------------------------
     if expired_external_refs:
         try:
-            dim = embedding_dimension()
-            store = FaissStore(index_path=INDEX_PATH, idmap_path=IDMAP_PATH, dim=dim)
-            store.load()
-            store.delete_refs(expired_external_refs)  # 존재하지 않는 ref는 내부에서 무시된다고 가정
-            store.save()
-            logger.info("[마감데이터삭제] 만료 임베딩 삭제 완료: %d", len(expired_external_refs))
-        except FileNotFoundError:
-            # 인덱스가 아직 없으면 그냥 스킵
-            logger.info("[마감데이터삭제] 인덱스 없음 → 삭제 스킵")
-        except KeyError:
-            # 일부 ref 미존재 시 무시
-            logger.info("[마감데이터삭제] 일부 미존재 ref 무시하고 진행")
+            # 숫자 문자열만
+            safe_refs = [str(r) for r in expired_external_refs if str(r).isdigit()]
+            if not safe_refs:
+                logger.info("[마감데이터삭제] 유효한 external_ref 없음 → 스킵")
+            else:
+                dim = embedding_dimension()
+                store = FaissStore(index_path=INDEX_PATH, dim=dim)
+                store.load()  # 파일 없으면 새로 만듦
+                deleted = store.remove_by_external_ids(safe_refs)
+                store.save()
+                logger.info("[마감데이터삭제] 삭제 완료: 요청=%d, 실제 삭제≈%d", len(safe_refs), deleted)
         except Exception as e:
             logger.warning("[마감데이터삭제] 삭제 중 오류: %s", e)
-    
+
     # 2. 신규 데이터 수집 시작 ------------------------------------------------------------------------------
     all_items: List[Dict[str, Any]] = []
     seen: set[str] = set()
     empty_batches = 0
     pages_scanned = 0
+
+    logger.info("[데이터수집] 데이터 수집 시작")
 
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=50)
     async with httpx.AsyncClient(headers={"Accept": "application/json"}, limits=limits) as client:
@@ -378,10 +377,11 @@ async def fetch_startup_supports_async(
 
     # 4. 임베딩/인덱스 업데이트 (제목+본문만, external_ref을 key로 관리) ---------------------------------
     try:
-        vectorize_and_upsert_from_dtos(dtos)
-        logger.info("[벡터화] 벡터화 시작")
+        logger.info("[벡터화] 시작")
+        vectorize_and_upsert_from_dtos(dtos)  # ← 반환값 받기
+        logger.info("[벡터화] 완료")
     except Exception as e:
-        logger.error("[벡터화][ERROR] 벡터화 실패: %s", e)
+        logger.error("[벡터화][ERROR] 실패: %s", e)
 
     logger.info("[최종] 처리한 페이지=%s 수집한 원본 데이터=%s DTO 변환 성공=%s DTO 변환 실패=%s",
                 pages_scanned, len(all_items), len(dtos), dto_fail)
