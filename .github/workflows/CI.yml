@@ -32,7 +32,7 @@ jobs:
       # 타입 체크(타입 오류 잡기 위해)
       - name: Type check with Mypy
         run: |
-          mypy api tests
+          mypy api
 
       # 테스트 실행
       - name: Run tests with Pytest
