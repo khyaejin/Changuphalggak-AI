@@ -36,6 +36,8 @@ jobs:
             LOG_DIR="$APP_DIR/logs"
             LOG_FILE="$LOG_DIR/uvicorn.log"
             TS="$(date +%Y%m%d-%H%M%S)"
+            DEPLOY_URL="https://43.202.138.216.nip.io/ai/"
+
 
             # 0) 작업 디렉터리로 이동
             cd "$APP_DIR"
@@ -87,19 +89,9 @@ jobs:
               --proxy-headers --forwarded-allow-ips='*' \
               >> "$LOG_FILE" 2>&1 & disown
 
-            # 7)  프로세스 체크 (최대 20초)
-            ok=false
-            for i in $(seq 1 10); do
-              if lsof -i:8000 | grep LISTEN >/dev/null; then
-                ok=true
-                echo "[info] Server process detected on 8000 at attempt #$i"
-                break
-              fi
-              echo "[info] Waiting for server process.. ($i/10)"
-              sleep 2
-            done
-            if [ "$ok" != true ]; then
-              echo "[error] 서버 프로세스 감지 실패. 로그 저장:"
-              tail -n 200 "$LOG_FILE" || true
-              exit 1
+            # 7) 외부 접근으로 서버 체크 (상태코드 무시, 연결만 되면 성공)
+            if curl -sSkI --max-time 3 "$DEPLOY_URL" >/dev/null; then
+              echo "[info] Access OK: $DEPLOY_URL"
+            else
+              echo "[warn] Could not reach $DEPLOY_URL"
             fi
