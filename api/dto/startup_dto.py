@@ -4,7 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Request
 class StartupSupportSyncRequest(BaseModel):
+    # 가장 최신 불러온 공고 k-startup Key
     after_external_ref: Optional[str] = Field(default=None, alias="afterExternalRef")
+    # 마감일이 지나 삭제할 공고 k-startup Key
+    expired_external_refs: Optional[List[str]] = Field(default=None, alias="expiredExternalRefs")
     model_config = ConfigDict(populate_by_name=True)
 
 # Response
