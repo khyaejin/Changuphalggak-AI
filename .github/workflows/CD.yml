@@ -1,11 +1,11 @@
 name: CD - FastAPI over SSH
 
 on:
-  push:
-  # main에 push될 때 발동
+  workflow_run:
+    workflows: ["CI - FastAPI"] # CI 워크플로우 이름
+    types: [completed] # CI가 끝났을 때 트리거
     branches: ["main"]
-  workflow_dispatch:
-
+      
 concurrency:
   group: cd-fastapi
   cancel-in-progress: true
@@ -14,6 +14,9 @@ jobs:
   deploy:
     name: Deploy to Server
     runs-on: ubuntu-latest
+    # CI 성공이고 main 브랜치일때만 배포
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    
     steps:
       - name: Checkout (for metadata only)
         uses: actions/checkout@v4
@@ -51,7 +54,7 @@ jobs:
             fi
 
             # requirements 돌리기(의존성 가져오기)
-            pip install -r requirements.txt -q || true
+            pip install -r requirements.txt -q 
 
             # 4) 로그 파일 준비 및 용량 체크 (>20MB)
             mkdir -p "$LOG_DIR"

@@ -1,0 +1,58 @@
+name: CI - FastAPI
+
+on:
+  pull_request:
+    branches: ["main"]   # main에 PR이 날아올 때 CI 실행
+  push:
+    branches: ["main"]   # main 브랜치에 직접 푸시될 때도 실행
+
+jobs:
+  check-env:
+    name: Check Python Environment
+    runs-on: ubuntu-latest
+
+    steps:
+      # 코드 체크아웃
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Python 세팅
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      # 의존성 설치 (서버 실행 가능 여부 확인용 최소 설치)
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      # 서버 실행 가능 여부 확인
+      - name: Dry run FastAPI
+        run: |
+          # 백그라운드로 서버 실행
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 &
+          PID=$!
+      
+          # 최대 20초 동안 서버가 뜨는지 체크
+          ok=false
+          for i in {1..10}; do
+              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+                  ok=true
+                  echo "[info] FastAPI is running!"
+                  break
+              fi
+              echo "[info] Waiting for FastAPI to start... ($i/10)"
+              sleep 2
+          done
+      
+          # 실패 시 에러 출력 후 종료
+          if [ "$ok" != true ]; then
+              echo "[error] FastAPI failed to start!"
+              kill $PID
+              exit 1
+          fi
+      
+          # 서버 종료
+          kill $PID
