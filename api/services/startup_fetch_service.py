@@ -187,7 +187,7 @@ async def _fetch_page_items(client: httpx.AsyncClient, page_no: int, num_rows: i
     }
     data = await _safe_fetch_json(client, params)
     items = data.get("data", []) or []
-    logger.debug("[시작] page=%s raw_items=%s", page_no, len(items))
+    # logger.debug("[시작] page=%s raw_items=%s", page_no, len(items))
     return items
 
 def _filter_and_dedupe(items, seen):
@@ -207,8 +207,8 @@ def _filter_and_dedupe(items, seen):
         if key:
             seen.add(key)
         out.append(it)
-    logger.debug("[데이터수집] in=%s -> out=%s (민간:%s, dup:%s)",
-                 len(items), len(out), removed_private, removed_dup)
+    # logger.debug("[데이터수집] in=%s -> out=%s (민간:%s, dup:%s)",
+    #              len(items), len(out), removed_private, removed_dup)
     return out
 
 # ================================================[[ 공개 메서드 ]]================================================
@@ -220,7 +220,7 @@ async def fetch_startup_supports_async(
         batch_concurrency: int = 5,
         max_empty_batches: int = 2,
         sleep_between_batches: float = 0.05,
-        hard_max_pages: int = 300, # 상한선
+        hard_max_pages: int = 100, # 상한선
 ) -> List[CreateStartupResponseDTO]:
     # 색 표시를 위해 임시로 warning 사용
     logger.warning(

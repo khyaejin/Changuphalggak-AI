@@ -40,25 +40,30 @@ router = APIRouter()
 @router.post("/ai/startup-supports", response_model=List[CreateStartupResponseDTO])
 async def get_startup_supports(
         req: StartupSupportSyncRequest,
-        hard_max_pages: int = Query(100, ge=1, le=500)  # 기본값 100
+        hard_max_pages: int = Query(100, ge=1, le=300)  # 기본값 100
 ) -> List[CreateStartupResponseDTO]:
     #  요청 파라미터 찍기
-    logger.info("[startup-supports] after_external_ref=%s, hard_max_pages=%s",
-                getattr(req, "after_external_ref", None), hard_max_pages)
+    logger.info(
+        "[지원사업수집] afterExternalRef=%s expiredExternalRefs.len=%s hard_max_pages=%s",
+        req.after_external_ref,
+         len(req.expired_external_refs),
+        hard_max_pages,
+    )
 
     t0 = time.perf_counter()
     result = await fetch_startup_supports_async(
         after_external_ref=req.after_external_ref,
+        expired_external_refs=req.expired_external_refs,
         hard_max_pages=hard_max_pages
     )
     dt = (time.perf_counter() - t0) * 1000
 
     # 반환 직전 프리뷰 보기
-    logger.info("[startup-supports] fetched=%d, elapsed=%.1fms", len(result), dt)
+    logger.info("[지원사업수집] fetched=%d, elapsed=%.1fms", len(result), dt)
     try:
-        logger.debug("[startup-supports] preview(3)=%s", _preview_list(result, n=3))
+        logger.debug("[지원사업수집] preview(3)=%s", _preview_list(result, n=3))
     except Exception as e:
-        logger.warning("[startup-supports] preview log failed: %s", e)
+        logger.warning("[지원사업수집] preview log failed: %s", e)
 
     return result
 
