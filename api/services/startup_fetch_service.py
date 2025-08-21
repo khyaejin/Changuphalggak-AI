@@ -157,11 +157,11 @@ async def _safe_fetch_json(client: httpx.AsyncClient, params: Dict[str, Any]) ->
     try:
         log_params = {k: v for k, v in params.items() if k != "serviceKey"}
         # 요청 관련 정보 찍기
-        logger.debug("[HTTP] GET 요청 보냄 → URL=%s, 요청 params=%s", BASE_URL, log_params)
-        r = await client.get(BASE_URL, params=params, timeout=10.0)
+        # logger.debug("[HTTP] GET 요청 보냄 → URL=%s, 요청 params=%s", BASE_URL, log_params)
+        # r = await client.get(BASE_URL, params=params, timeout=10.0)
         # 응답 관련 정보 찍기
-        logger.debug("[HTTP] 응답 받음 → page=%s, status=%s, bytes=%s",
-                     params.get("pageNo"), r.status_code, len(r.content))
+        # logger.debug("[HTTP] 응답 받음 → page=%s, status=%s, bytes=%s",
+        #              params.get("pageNo"), r.status_code, len(r.content))
 
         r.raise_for_status()
         ctype = r.headers.get("content-type", "")
@@ -211,17 +211,20 @@ def _filter_and_dedupe(items, seen):
 # ---------- 공개 함수 ----------
 async def fetch_startup_supports_async(
         *,
-        after_external_ref: str | None = None,
+        after_external_ref: str | None = None, # 가장 최신 공고 key
+        expired_external_refs: list[str] | None = None,   # 삭제할 공고 key 리스트
         num_rows: int = 10, # 한 번에 10개로
         batch_concurrency: int = 5,
         max_empty_batches: int = 2,
         sleep_between_batches: float = 0.05,
-        hard_max_pages: int = 500, # 상한선
+        hard_max_pages: int = 300, # 상한선
 ) -> List[CreateStartupResponseDTO]:
     # 색 표시를 위해 임시로 warning 사용
-    logger.warning("[START] after_external_ref=%s num_rows=%s batch_concurrency=%s hard_max_pages=%s",
-                after_external_ref, num_rows, batch_concurrency, hard_max_pages)
-
+    logger.warning(
+        "[START] after_external_ref=%s expired_external_refs=%s num_rows=%s batch_concurrency=%s hard_max_pages=%s",
+        after_external_ref, expired_external_refs, num_rows, batch_concurrency, hard_max_pages
+    )
+    
     all_items: List[Dict[str, Any]] = []
     seen: set[str] = set()
     empty_batches = 0
