@@ -14,15 +14,19 @@ from dotenv import load_dotenv
 from api.dto.startup_dto import CreateStartupResponseDTO
 
 from api.services.vectorize_hook import vectorize_and_upsert_from_dtos
+from api.embedding.faiss_store import FaissStore
+from api.embedding.vectorizer import embedding_dimension
 
 load_dotenv()
 SERVICE_KEY = os.getenv("SERVICE_KEY")
 BASE_URL = os.getenv("BASE_URL")
+INDEX_PATH = os.getenv("INDEX_PATH", "data/supports.faiss")
+IDMAP_PATH = os.getenv("IDMAP_PATH", "data/refs.json")
 
-# ---------- 로거 ----------
+# ==================================================[[ 로거 ]]==================================================
 logger = logging.getLogger("startup_service")
 
-# ---------- 유틸 메서드들 ----------
+# ==============================================[[ 유틸 메서드들 ]]==============================================
 # 문자열 → date 객체
 def _date_yyyymmdd_to_date(d: Optional[str]) -> Optional[date]:
     if not d:
@@ -152,16 +156,15 @@ def _normalize_target_age(value: Optional[str]) -> Optional[str]:
     # 그 외는 원본 반환
     return value
 
-# ---------- 내부 메서드 ----------
+# ================================================[[ 내부 메서드 ]]================================================
 async def _safe_fetch_json(client: httpx.AsyncClient, params: Dict[str, Any]) -> Dict[str, Any]:
     try:
         log_params = {k: v for k, v in params.items() if k != "serviceKey"}
-        # 요청 관련 정보 찍기
+        # 요청 정보 찍기
         # logger.debug("[HTTP] GET 요청 보냄 → URL=%s, 요청 params=%s", BASE_URL, log_params)
-        # r = await client.get(BASE_URL, params=params, timeout=10.0)
-        # 응답 관련 정보 찍기
-        # logger.debug("[HTTP] 응답 받음 → page=%s, status=%s, bytes=%s",
-        #              params.get("pageNo"), r.status_code, len(r.content))
+        r = await client.get(BASE_URL, params=params, timeout=10.0)
+        # 응답 정보 찍기
+        # logger.debug("[HTTP] 응답 받음 → page=%s, status=%s, bytes=%s", params.get("pageNo"), r.status_code, len(r.content))
 
         r.raise_for_status()
         ctype = r.headers.get("content-type", "")
@@ -208,7 +211,7 @@ def _filter_and_dedupe(items, seen):
                  len(items), len(out), removed_private, removed_dup)
     return out
 
-# ---------- 공개 함수 ----------
+# ================================================[[ 공개 메서드 ]]================================================
 async def fetch_startup_supports_async(
         *,
         after_external_ref: str | None = None, # 가장 최신 공고 key
@@ -224,7 +227,20 @@ async def fetch_startup_supports_async(
         "[START] after_external_ref=%s expired_external_refs=%s num_rows=%s batch_concurrency=%s hard_max_pages=%s",
         after_external_ref, expired_external_refs, num_rows, batch_concurrency, hard_max_pages
     )
+
+    # 1. 먼저 마감된 데이터 삭제 ----------------------------------------------------------------------------
+    if expired_external_refs:
+        try:
+            dim = embedding_dimension()
+            store = FaissStore(index_path=INDEX_PATH, idmap_path=IDMAP_PATH, dim=dim)
+            store.load() # 불러와서
+            store.delete_refs(expired_external_refs) # 해당 임베딩 벡터 삭제
+            store.save() # 저장
+            logger.info("[VEC] 만료된 지원 사업의 임베딩 벡터 삭제 완료: %s개", len(expired_external_refs))
+        except Exception as e:
+            logger.error("[VEC][ERROR] 만료된 지원 사업의 임베딩 벡터 삭제 실패: %s", e)
     
+    # 2. 신규 데이터 수집 시작 ------------------------------------------------------------------------------
     all_items: List[Dict[str, Any]] = []
     seen: set[str] = set()
     empty_batches = 0
@@ -233,7 +249,7 @@ async def fetch_startup_supports_async(
     limits = httpx.Limits(max_keepalive_connections=20, max_connections=50)
     async with httpx.AsyncClient(headers={"Accept": "application/json"}, limits=limits) as client:
 
-        # 1) after_external_ref가 있는 경우: 마커까지 순차로 수집 ---
+        # 1) after_external_ref가 있는 경우: 마커까지 순차로 수집 
         if after_external_ref:
             page = 1
             found_marker = False
@@ -276,7 +292,7 @@ async def fetch_startup_supports_async(
                 if sleep_between_batches:
                     await asyncio.sleep(sleep_between_batches)
 
-        # 2) after_external_ref가 없는 경우: 기존 배치 병렬 수집 ---
+        # 2) after_external_ref가 없는 경우: 기존 배치 병렬 수집 
         else:
             # 1) 첫 페이지로 총 페이지 수 추정
             first = await _safe_fetch_json(client, {
@@ -342,7 +358,8 @@ async def fetch_startup_supports_async(
                 if sleep_between_batches:
                     await asyncio.sleep(sleep_between_batches)
 
-    # DTO 변환
+     
+    # 3. DTO 변환 -------------------------------------------------------------------------------------
     dtos: List[CreateStartupResponseDTO] = []
     dto_fail = 0
     for it in all_items:
@@ -352,7 +369,8 @@ async def fetch_startup_supports_async(
             dto_fail += 1
             logger.warning("[WARN] DTO 변환 실패 (pbanc_sn=%s): %s", it.get("pbanc_sn"), e)
 
-    # 임베딩/인덱스 업데이트 (제목+본문만, external_ref 기준)
+
+    # 4. 임베딩/인덱스 업데이트 (제목+본문만, external_ref을 key로 관리) ---------------------------------
     try:
         vectorize_and_upsert_from_dtos(dtos)
         logger.info("[VEC] 벡터화 시작")
