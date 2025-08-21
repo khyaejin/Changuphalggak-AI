@@ -46,17 +46,18 @@ jobs:
             # 2) .env 가져오기
             printf '%s' "${{ secrets.ENV_FILE }}" > .env
 
-            # 3) venv 활성화 (있을 때만)
+            # 3) venv 활성화
             if [ -f ".venv/bin/activate" ]; then
               . .venv/bin/activate
-            else
-              echo "[warn] .venv not found. Skipping venv activation."
+            else # 없으면 깔고 활성화
+              python3 -m venv .venv
+              . .venv/bin/activate
             fi
 
             # requirements 돌리기(의존성 가져오기)
             pip install -r requirements.txt -q 
 
-            # 4) 로그 파일 준비 및 용량 체크 (>20MB)
+            # 4) 로그 파일 준비 및 용량 체크 (>20MB이상이면 압축)
             mkdir -p "$LOG_DIR"
             touch "$LOG_FILE"
             if [ -f "$LOG_FILE" ] && [ "$(du -m "$LOG_FILE" | cut -f1)" -ge 20 ]; then
@@ -66,36 +67,40 @@ jobs:
               echo "[info] Log rotated: $LOG_DIR/uvicorn-$TS.log.gz"
             fi
 
-            # 5) 기존 8000포트로 돌고있는 서버가 있다면 서버 중단
+            # 5) 기존 8000포트로 돌고있는 서버가 있다면 중단 시키기
             if command -v lsof >/dev/null 2>&1; then
-              if lsof -t -i:8000 >/dev/null 2>&1; then
-                kill -9 $(lsof -t -i:8000) || true
-                echo "[info] Killed process on :8000"
+              PIDS=$(lsof -t -i:8000)
+              if [ -n "$PIDS" ]; then
+                kill $PIDS
+                sleep 2
+                kill -9 $PIDS 2>/dev/null || true
+                echo "[info] 8000 포트에서 돌고 있는 프로세스 중단"
               fi
             else
               pkill -f "uvicorn.*8000" || true
             fi
 
             # 6) 서버 재가동 
-            #    운영에선 --reload 비권장이지만 지금은 유지
             nohup python -m uvicorn main:app \
-              --reload --host 0.0.0.0 --port 8000 >> "$LOG_FILE" 2>&1 & # 로그는 누적으로 기록
+              --host 0.0.0.0 --port 8000 \
+              --workers 2 --log-level info \
+              --proxy-headers --forwarded-allow-ips='*' \
+              >> "$LOG_FILE" 2>&1 & disown
 
             # 7) 헬스체크 (최대 20초)
-            echo "[info] Health check start..."
+            echo "[info] 헬스 체크 시작"
             ok=false
             for i in $(seq 1 10); do
-              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1 || \
-                 curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
+              if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
                 ok=true
                 echo "[info] Health check passed on attempt #$i"
                 break
               fi
-              echo "[info] Waiting for app... ($i/10)"
+              echo "[info] Waiting for app.. ($i/10)"
               sleep 2
             done
             if [ "$ok" != true ]; then
-              echo "[error] Health check failed. Recent uvicorn logs:"
+              echo "[error] 헬스 체크 실패. 로그 저장:"
               tail -n 200 "$LOG_FILE" || true
               exit 1
             fi
