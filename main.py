@@ -1,5 +1,9 @@
 # main.py
+import os 
 import logging
+from api.core.cpu_tuning import apply_cpu_tuning
+apply_cpu_tuning(default_workers=int(os.getenv("APP_WORKERS", "1"))) # 스레드 관리
+
 from fastapi import FastAPI
 from api.routers.startup_router import router as startup_router
 from api.embedding.index_singleton import get_store
