@@ -60,7 +60,7 @@ class FaissStore:
         assert self.index is not None, INDEX_NOT_READY_MSG
         vecs = self._ensure_f32(vectors)
         assert vecs.shape[1] == self.dim, "차원 불일치"
-        vecs = self._normalize(vecs)a
+        vecs = self._normalize(vecs)
         ids = self._to_ids(external_refs)
         self.index.add_with_ids(vecs, ids)
 
