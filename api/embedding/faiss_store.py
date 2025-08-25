@@ -40,9 +40,11 @@ class FaissStore:
         self._new_index()
 
     # ---------- 내부 메서드 ----------
+    # 데이터 타입을 float32로 변환(FAOSS가 요규하는 형식임)
+    # FAISS가 빠르고 안정적으로 읽을 수 있도록 메모리를 연속 배열로 변환
     def _normalize(self, vecs: np.ndarray) -> np.ndarray:
-        norms = np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12
-        return vecs / norms
+        return np.ascontiguousarray(vecs, dtype=np.float32)
+
 
     def _ensure_f32(self, vecs: np.ndarray) -> np.ndarray:
         return vecs.astype("float32") if vecs.dtype != np.float32 else vecs
