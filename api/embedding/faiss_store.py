@@ -65,11 +65,13 @@ class FaissStore:
         self.remove_by_external_ids(external_refs)
         self.add_with_external_ids(vectors, external_refs)
 
+    # external_id 기반 인덱스 제거
     def remove_by_external_ids(self, external_refs: Iterable[str]) -> int:
         assert self.index is not None, "인덱스가 준비되지 않음"
         ids = self._to_ids(external_refs)
         before = self.ntotal
-        self.index.remove_ids(ids)
+        sel = faiss.IDSelectorArray(len(ids), ids) # IDSelectorArray  사용(대량 삭제 최적화를 위해)
+        self.index.remove_ids(sel)
         after = self.ntotal
         return before - after
 
