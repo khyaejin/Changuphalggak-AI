@@ -39,19 +39,6 @@ def _norm_text(x: Optional[str]) -> str:
     return x
 
 
-# def build_index_text(item: Dict[str, Any]) -> str:
-#     """
-#     색인용 텍스트 생성
-#     API 응답 Json -> 필요한 필드만 뽑아 하나의 문자열로 생성
-#     """
-#     parts = [
-#         item.get("biz_pbanc_nm"), # 제목
-#         item.get("pbanc_ctnt") # 본문
-#     ]
-#     return " ".join(_norm_text(p) for p in parts if p) # 값이 있는 필드만 사용
-#
-
-
 def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     """
     텍스트 리스트 → 임베딩 벡터(float32, L2 정규화)
@@ -66,7 +53,7 @@ def embed_texts(texts: List[str], batch_size: int = 64) -> np.ndarray:
     vecs = model.encode(
         texts,
         batch_size=batch_size,
-        show_progress_bar=True, # 진행바 출력 여부
+        show_progress_bar=False, # 진행바 출력 여부
         convert_to_numpy=True, # 결과를 넘파이로 반환
         normalize_embeddings=True, # L2 정규화 하도록
     )
