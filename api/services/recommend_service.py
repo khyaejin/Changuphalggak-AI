@@ -27,14 +27,13 @@ def similar_top_k(req: StartupRequestDTO, k: int = 30) -> List[SimilarSupportDTO
     # 쿼리 임베딩 (1, d) - L2 정규화된 float32
     qv = embed_texts([query])
 
-    # 인덱스 로드
-    store = FaissStore(index_path=INDEX_PATH, dim=embedding_dimension())
-    store.load()
+    # 싱글톤 인덱스 로드
+    store = get_store()
     if store.is_empty():
-        logger.warning("[유사도] 색인된 데이터가 없어 검색 불가")
+        logger.warning("[유사도] 색인된 데이터가 없음")
         return []
-
-    # 검색 (FaissStore는 dict 리스트 반환: {"ref": , "score": , "score01": })
+    # 벡터 검색 → 상위 k개 결과 반환
+    # 결과 형식 {"ref": , "score": , "score01": }
     hits = store.search_one(qv[0], top_k=k)
 
     # DTO 변환
