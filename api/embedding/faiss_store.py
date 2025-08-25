@@ -8,6 +8,8 @@ from typing import Iterable, List, Dict, Any
 import faiss
 import numpy as np
 
+INDEX_NOT_READY_MSG = "인덱스가 준비되지 않음"
+
 
 class FaissStore:
     def __init__(self, index_path: str, dim: int):
@@ -40,7 +42,7 @@ class FaissStore:
         self._new_index()
 
     # ---------- 내부 메서드 ----------
-    # 데이터 타입을 float32로 변환(FAOSS가 요규하는 형식임)
+    # 데이터 타입을 float32로 변환(FAISS가 요규하는 형식임)
     # FAISS가 빠르고 안정적으로 읽을 수 있도록 메모리를 연속 배열로 변환
     def _normalize(self, vecs: np.ndarray) -> np.ndarray:
         return np.ascontiguousarray(vecs, dtype=np.float32)
@@ -55,10 +57,10 @@ class FaissStore:
 
     # ---------- 추가/업서트/삭제 ----------
     def add_with_external_ids(self, vectors: np.ndarray, external_refs: List[str]) -> None:
-        assert self.index is not None, "인덱스가 준비되지 않음"
+        assert self.index is not None, INDEX_NOT_READY_MSG
         vecs = self._ensure_f32(vectors)
         assert vecs.shape[1] == self.dim, "차원 불일치"
-        vecs = self._normalize(vecs)
+        vecs = self._normalize(vecs)a
         ids = self._to_ids(external_refs)
         self.index.add_with_ids(vecs, ids)
 
@@ -69,7 +71,7 @@ class FaissStore:
 
     # external_id 기반 인덱스 제거
     def remove_by_external_ids(self, external_refs: Iterable[str]) -> int:
-        assert self.index is not None, "인덱스가 준비되지 않음"
+        assert self.index is not None,INDEX_NOT_READY_MSG
         ids = self._to_ids(external_refs)
         before = self.ntotal
         sel = faiss.IDSelectorArray(len(ids), ids) # IDSelectorArray  사용(대량 삭제 최적화를 위해)
@@ -84,7 +86,7 @@ class FaissStore:
          {ref: "174700", score: float}
         score는 코사인 값(내적) 범위 대략 [-1, 1]
         """
-        assert self.index is not None, "인덱스가 준비되지 않음"
+        assert self.index is not None, INDEX_NOT_READY_MSG
         q = self._ensure_f32(query_vectors)
         assert q.shape[1] == self.dim, "차원 불일치"
         q = self._normalize(q)
