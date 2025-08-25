@@ -4,9 +4,8 @@ import logging
 from typing import List
 
 from api.dto.recommended_dto import StartupRequestDTO, SimilarSupportDTO
-from api.embedding.vectorizer import embed_texts, embedding_dimension
+from api.embedding.vectorizer import embed_texts
 from api.embedding.index_singleton import get_store 
-from api.embedding.faiss_store import FaissStore
 
 logger = logging.getLogger("startup_recommender")
 
