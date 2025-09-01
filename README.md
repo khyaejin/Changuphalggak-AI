@@ -159,15 +159,13 @@
 
 
 
-
 ## 05 기술 스택
 * **Lang/Runtime**: Python 3.11
 * **Web**: FastAPI, Uvicorn(개발) / Gunicorn+UvicornWorker(운영)
-* **ML**: SentenceTransformers(SBERT), FAISS
+* **ML**: [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)(SBERT) AllMiniLm L6 V2, FAISS
 * **HTTP**: httpx(Async)
 * **Data/Model**: Pydantic v2, python-dotenv
 * **Infra/Obs**: 로깅, 헬스체크
-
 
 
 
